@@ -35,20 +35,20 @@
   (cl:+ x y))
 
 (defun +(&rest args)
-  (reduce (lambda(x y) (add x y) )args))
+  (reduce (lambda(x y) (add x y)) args))
 
-(defstruct astro-date-t mjd)
-(defstruct astro-vector-t eq)
+(defstruct astro-date mjd)
+(defstruct astro-vector eq)
 
-(defun astro-date-t-from-parts(year month day hour minutes seconds &optional (dst-p nil) (tz 0))
+(defun astro-date(year month day &optional (hour 0) (minutes 0) (seconds 0) (dst-p nil) (tz 0))
   (with-foreign-object (mjd :double)
     (let ((dy (+ day (/ (+ hour (/ minutes 60) (/ seconds 3600) ) 24))))
       (cal-mjd month (coerce dy 'double-float) year mjd) 
-      (make-astro-date-t :mjd (+ (mem-ref mjd :double) (/ (+ tz (if dst-p -1 0)) 24))))))
+      (make-astro-date :mjd (+ (mem-ref mjd :double) (/ (+ tz (if dst-p -1 0)) 24))))))
 
-(defun astro-date-t-to-parts( astro-date &optional (tz 0) (dst-p nil))
+(defun astro-date-parts( astro-date &optional (tz 0) (dst-p nil))
   (with-foreign-objects ((mn :int) (dy :double) (yr :int))
-    (let ((mjd (+ (- (astro-date-t-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
+    (let ((mjd (+ (- (astro-date-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
       (mjd-cal mjd mn dy yr)
       (multiple-value-bind (day daypart)(floor (mem-ref dy :double))
 	(multiple-value-bind (hour hourpart) (floor (* 24 daypart))
@@ -62,56 +62,48 @@
 	       minute
 	       second))))))))
 
-(defun astro-date-t-from-mjd( mjd )
-  (make-astro-date-t :mjd mjd))
+(defmethod print-object ((dt astro-date) s)
+  (multiple-value-bind (year month day hour minute second)(astro-date-parts dt)
+    (format s "~4,'0d-~2,'0d-~2,'0d ~2,'0d:~2,'0d:~2,'0d UTC <astro-date>" year month day hour minute second)))
 
-(defun astro-date-t-to-mjd( astro-date )
-  (astro-date-t-mjd astro-date))
+(defun astro-date-now()
+  (multiple-value-bind (seconds minutes hours day month year dow dst-p tz) (get-decoded-time) (when dow (astro-date year month day hours minutes seconds dst-p tz))))
 
-(defmethod print-object ((dt astro-date-t) s)
-  (multiple-value-bind (year month day hour minute second)(astro-date-t-to-parts dt)
-    (format s "~a-~a-~a ~a:~a:~a UTC" year month day hour minute second)))
+(defun gst(&optional astro-date)
+  (let ((mjd (astro-date-mjd (or astro-date (astro-date-now)))))
+    (with-foreign-objects ((gst :double))
+      (multiple-value-bind (whole fraction)(floor (+ mjd 0.5))
+	(utc-gst (coerce (- whole 0.5) 'double-float) (coerce (* fraction 24) 'double-float) gst)
+	(mem-ref gst :double)))))
 
-(defparameter *mjd* nil)
-
-(defun make-astro-date-now()
-  (multiple-value-bind (seconds minutes hours day month year dow dst-p tz) (get-decoded-time) (when dow (astro-date-t-from-parts year month day hours minutes seconds dst-p tz))))
-
-(defun mjd()
-  (astro-date-t-mjd (or *mjd* (make-astro-date-now))))
-
-(defun gst()
-  (with-foreign-objects ((gst :double))
-    (multiple-value-bind (whole fraction)(floor (+ (mjd) 0.5))
-      (utc-gst (coerce (- whole 0.5) 'double-float) (coerce (* fraction 24) 'double-float) gst)
-      (mem-ref gst :double))))
-
-(defun astro-vector-t-from-eq(r dec ra)
+(defun astro-vector-from-eq(r dec ra)
   (let ((cos-dec (cos dec)))
-    (make-astro-vector-t :eq (vector (* r cos-dec (cos ra)) (* r cos-dec (sin ra)) (* r (sin dec))))))
+    (make-astro-vector :eq (vector (* r cos-dec (cos ra)) (* r cos-dec (sin ra)) (* r (sin dec))))))
 
-(defun astro-vector-t-from-ecp(r lat long)
+(defun astro-vector-from-ecp(r lat long mj)
   (with-foreign-objects ((pra :double) (pdec :double))
-    (ecl-eq (mjd) lat long pra pdec)
+    (ecl-eq mj lat long pra pdec)
     (let ((ra (mem-ref pra :double))
 	  (dec (mem-ref pdec :double)))
       (let ((cos-dec (cos dec)))
-	(make-astro-vector-t :eq (vector (* r cos-dec (cos ra)) (* r cos-dec (sin ra)) (* r (sin dec))))))))
+	(make-astro-vector :eq (vector (* r cos-dec (cos ra)) (* r cos-dec (sin ra)) (* r (sin dec))))))))
 
-(defun astro-vector-t-to-eq-cart( astro-vector-o )
-  (astro-vector-t-eq astro-vector-o))
+(defun astro-vector-to-eq-cart( astro-vector-o )
+  (astro-vector-eq astro-vector-o))
 
-(defmethod add( (x astro-vector-t) (y astro-vector-t) )
-  (map 'vector (lambda(xx yy) (add xx yy)) (astro-vector-t-eq x) (astro-vector-t-eq y)))
+(defmethod add( (x astro-vector) (y astro-vector) )
+  (map 'vector (lambda(xx yy) (add xx yy)) (astro-vector-eq x) (astro-vector-eq y)))
 
-(defmethod print-object ((avo astro-vector-t) s)
-  (format s "~a <equatorial coords>" (astro-vector-t-eq avo)))
+(defmethod print-object ((avo astro-vector) s)
+  (format s "~a <equatorial coords>" (astro-vector-eq avo)))
  
-(defun sun-pos()
-  (with-foreign-objects ((lsn :double) (rsn :double) (bsn :double))
-    (sunpos (mjd) lsn rsn bsn)
-    (astro-vector-t-from-ecp 
-     (mem-ref rsn :double)
-     (mem-ref lsn :double)
-     (mem-ref bsn :double))))
+(defun sun-pos(&optional astro-date)
+  (let ((mj (astro-date-mjd (or astro-date (astro-date-now)))))
+    (with-foreign-objects ((lsn :double) (rsn :double) (bsn :double))
+      (sunpos mj lsn rsn bsn)
+      (astro-vector-from-ecp 
+       (mem-ref rsn :double)
+       (mem-ref lsn :double)
+       (mem-ref bsn :double)
+       mj))))
 
