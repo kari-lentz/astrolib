@@ -1,11 +1,9 @@
 ;;; Nothing special about the "CFFI-USER" package.  We're just
 ;;; using it as a substitute for your own CL package.
 (defpackage :astrolib
-  (:shadow cl:+)
   (:export :make-mjd 
 	   :sun-pos 
 	   :gst
-	   + 
 	   :mjd
 	   :make-astro-date-now)
   (:use :common-lisp :cffi))
@@ -31,12 +29,6 @@
 
 (defgeneric add(x y))
 
-(defmethod add(x y)
-  (cl:+ x y))
-
-(defun +(&rest args)
-  (reduce (lambda(x y) (add x y)) args))
-
 (defstruct astro-date mjd)
 (defstruct astro-vector eq)
 
@@ -48,7 +40,7 @@
 
 (defun astro-date-parts( astro-date &optional (tz 0) (dst-p nil))
   (with-foreign-objects ((mn :int) (dy :double) (yr :int))
-    (let ((mjd (+ (- (astro-date-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
+    (let ((mjd (add (- (astro-date-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
       (mjd-cal mjd mn dy yr)
       (multiple-value-bind (day daypart)(floor (mem-ref dy :double))
 	(multiple-value-bind (hour hourpart) (floor (* 24 daypart))
