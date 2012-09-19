@@ -5,7 +5,9 @@
 	   :sun-pos 
 	   :gst
 	   :mjd
-	   :make-astro-date-now)
+	   :astro-date-now
+	   :astro-date
+	   :astro-vector-eq)
   (:use :common-lisp :cffi))
    
 (in-package :astrolib)
@@ -36,11 +38,11 @@
   (with-foreign-object (mjd :double)
     (let ((dy (+ day (/ (+ hour (/ minutes 60) (/ seconds 3600) ) 24))))
       (cal-mjd month (coerce dy 'double-float) year mjd) 
-      (make-astro-date :mjd (+ (mem-ref mjd :double) (/ (+ tz (if dst-p -1 0)) 24))))))
+      (make-astro-date :mjd (+ (mem-ref mjd :double) (/ (+ tz (if dst-p -1.0 0.0)) 24.0))))))
 
 (defun astro-date-parts( astro-date &optional (tz 0) (dst-p nil))
   (with-foreign-objects ((mn :int) (dy :double) (yr :int))
-    (let ((mjd (add (- (astro-date-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
+    (let ((mjd (+ (- (astro-date-mjd astro-date) (/ tz 24)) (if dst-p 1.0d0 0.0d0)))) 
       (mjd-cal mjd mn dy yr)
       (multiple-value-bind (day daypart)(floor (mem-ref dy :double))
 	(multiple-value-bind (hour hourpart) (floor (* 24 daypart))
