@@ -97,7 +97,6 @@
       (sunpos mj lsn rsn bsn)
       (astro-vector-from-ecp 
        (mem-ref rsn :double)
-       (mem-ref lsn :double)
        (mem-ref bsn :double)
+       (mem-ref lsn :double)
        mj))))
-
