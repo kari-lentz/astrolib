@@ -8,7 +8,7 @@
 	   :astro-date-now
 	   :astro-date
 	   :astro-vector-eq)
-  (:use :common-lisp :cffi))
+  (:use :common-lisp :cffi :utility))
    
 (in-package :astrolib)
 
@@ -28,6 +28,46 @@
 (defcfun "eq_ecl" :void (mj :double) (ra :double) (dec :double) (lt :pointer) (lg :pointer))
 (defcfun "ecl_eq" :void (mj :double) (lt :double) (lg :double) (ra :pointer) (dec :pointer))
 (defcfun "sunpos" :void (mj :double) (lsn :pointer) (rsn :pointer) (bsn :pointer))
+
+(defcenum planet-codes
+  :mercury
+  :venus
+  :mars
+  :jupiter
+  :saturn
+  :uranus
+  :neptune
+  :pluto
+  :sun
+  :moon
+  :nobj	)
+
+(defcfun "plans" :void (mj :double) (p :int) (lpd0 :pointer) (psi0 :pointer)(rp0 :pointer)(rho0 :pointer)(lam :pointer)(bet :pointer)(dia :pointer)(mag :pointer))
+
+;/* given a modified Julian date, mj, and a planet, p, find:
+; *   lpd0: heliocentric longitude, 
+; *   psi0: heliocentric latitude,
+; *   rp0:  distance from the sun to the planet, 
+; *   rho0: distance from the Earth to the planet,
+; *         none corrected for light time, ie, they are the true values for the
+; *         given instant.
+; *   lam:  geocentric ecliptic longitude, 
+; *   bet:  geocentric ecliptic latitude,
+; *         each corrected for light time, ie, they are the apparent values as
+; *	   seen from the center of the Earth for the given instant.
+; *   dia:  angular diameter in arcsec at 1 AU, 
+; *   mag:  visual magnitude
+; *
+; * all angles are in radians, all distances in AU.
+; *
+; * corrections for nutation and abberation must be made by the caller. The RA 
+; *   and DEC calculated from the fully-corrected ecliptic coordinates are then
+; *   the apparent geocentric coordinates. Further corrections can be made, if
+; *   required, for atmospheric refraction and geocentric parallax.
+; */
+;void
+;plans (double mj, PLCode p, double *lpd0, double *psi0, double *rp0,
+;double *rho0, double *lam, double *bet, double *dia, double *mag)
 
 (defgeneric add(x y))
 
@@ -100,3 +140,32 @@
        (mem-ref bsn :double)
        (mem-ref lsn :double)
        mj))))
+
+(defmacro call-reference((&rest param-specs) function-call)
+  `(with-foreign-objects ,param-specs
+     ,function-call 
+     (values ,@(loop for (name type) in param-specs collecting `(mem-ref ,name ,type)))))
+
+(defun ephemeris(planet-code &optional astro-date)
+  (let ((mj (astro-date-mjd (or astro-date (astro-date-now)))))
+    (call-reference 
+     ((heliocentric-longitude :double)(heliocentric-latitude :double)(sun-distance :double)(earth-distance :double)(geocentric-longitude :double)(geocentric-latitude :double)(angular-diameter :double)(visual-magnitude :double)) 
+     (plans mj (foreign-enum-value 'planet-codes planet-code) heliocentric-longitude heliocentric-latitude sun-distance earth-distance geocentric-longitude geocentric-latitude angular-diameter visual-magnitude))))
+
+(defun test()
+  (macroexpand-1
+   '(call-reference 
+    ((heliocentric-longitude :double)(heliocentric-latitude :double)(sun-distance :double)(earth-distance :double)(geocentric-longitude :double)(geocentric-latitude :double)(angular-diameter :double)(visual-magnitude :double)) 
+     (plans mj planet-code heliocentric-longitude heliocentric-latitude sun-distance earth-distance geocentric-longitude geocentric-latitude angular-diameter visual-magnitude)))) 
+
+(defun map-nth(nth zipped-list &optional (function #'identity))
+  (mapcar (lambda(row)(funcall function (nth nth row))) zipped-list))
+
+;; (defmacro foreign-call((&rest input-param-bindings) (&rest output-param-specs) function-call)
+;;   (append 
+;;    (loop for (name value) in input-param-bindings collecting name)
+;;    (loop for (name type) in output-param-specs collecting name)
+
+;;   `(with-foreign-objects ,param-specs
+;;      ,function-call 
+;;      (values ,@(loop for (name type) in param-specs collecting `(mem-ref ,name ,type)))))

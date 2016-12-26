@@ -5,4 +5,4 @@
   ((:module src
     :components
     ((:file "astrolib"))))
-  :depends-on (cffi))
+  :depends-on (cffi utility))
